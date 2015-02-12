@@ -18,7 +18,13 @@ class Order extends Application {
     // start a new order
     function neworder() {
         //FIXME
-
+        $order_num = $this->orders->highest() + 1;
+        $newOrder = $this->orders->create();
+        $newOrder->num = $order_num;
+        $newOrder->date = date('Y-m-d H:i:s');
+        $newOrder->status = 'a';
+        $this->orders->add($newOrder);
+        
         redirect('/order/display_menu/' . $order_num);
     }
 
@@ -30,26 +36,18 @@ class Order extends Application {
         $this->data['pagebody'] = 'show_menu';
         $this->data['order_num'] = $order_num;
         //FIXME
-
+        $order = $this->orders->get($order_num);
         // Make the columns
         $this->data['meals'] = $this->make_column('m');
         $this->data['drinks'] = $this->make_column('d');
         $this->data['sweets'] = $this->make_column('s');
-
-	// Bit of a hokey patch here, to work around the problem of the template
-	// parser no longer allowing access to a parent variable inside a
-	// child loop - used for the columns in the menu display.
-	// this feature, formerly in CI2.2, was removed in CI3 because
-	// it presented a security vulnerability.
-	// 
-	// This means that we cannot reference order_num inside of any of the
-	// variable pair loops in our view, but must instead make sure
-	// that any such substitutions we wish make are injected into the 
-	// variable parameters
-	// Merge this fix into your origin/master for the lab!
+        $this->data['title'] = 'Order #'.$order_num.' ('.
+                money_format('%n',$this->orders->total($order_num)).')';
+       
 	$this->hokeyfix($this->data['meals'],$order_num);
 	$this->hokeyfix($this->data['drinks'],$order_num);
 	$this->hokeyfix($this->data['sweets'],$order_num);
+        
 	// end of hokey patch
 	
         $this->render();
@@ -64,12 +62,17 @@ class Order extends Application {
     // make a menu ordering column
     function make_column($category) {
         //FIXME
+        $items = $this->menu->some('category', $category);
+        foreach($items as $item) {
+            $item->order_num = $order_num;
+        }
         return $items;
     }
 
     // add an item to an order
     function add($order_num, $item) {
         //FIXME
+        $this->orders->add_item($order_num, $item);
         redirect('/order/display_menu/' . $order_num);
     }
 
@@ -79,19 +82,38 @@ class Order extends Application {
         $this->data['pagebody'] = 'show_order';
         $this->data['order_num'] = $order_num;
         //FIXME
-
+        $this->data['total'] = money_format('%n', $this->orders->total($order_num));
+        $this->data['items'] = $this->orders->details($order_num);
+        
+        if ($this->orders->validate($order_num)) {
+            $this->data['okornot'] = '';
+        } else {
+            $this->data['okornot'] = 'disabled';    
+        }
         $this->render();
     }
 
     // proceed with checkout
     function proceed($order_num) {
         //FIXME
+        if(!$this->orders->validate($order_num)) {
+            redirect('/order/display_menu/' . $order_num);
+        }
+        $record = $this->orders->get($order_num);
+        $record->date = date(DATE_ATOM);
+        $record->status = 'c';
+        $record->total = $this->orders->total($order_num);
+        $this->orders->update($record);
         redirect('/');
     }
 
     // cancel the order
     function cancel($order_num) {
         //FIXME
+        $this->orderitems->delete_some($order_num);
+        $record = $this->orders->get($order_num);
+        $record->status = 'x';
+        $this->orders->update($record);
         redirect('/');
     }
 
